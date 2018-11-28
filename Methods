@@ -1,6 +1,6 @@
-## Study and Control Population
+# Study and Control Population
 Study population data were downloaded from GEO, experiment GSE72120. Saliva samples were taken from 36 preterm and 36 term infants who recieved care at the Royal Infirmary of Edinburgh between 2012 and 2014. DNA from these samples was hybridized to the Illumina Infinium 450k Human Methylation Beadchip. Preterm birth was defined as < 32 weeks gestation, and term birth as > 37 weeks gestation. In each group, there are 18 males and 18 females. For the preterm infants, data on steriod administration (yes/no) were also included.
-## Methylation Array - Illumnia 450K
+# Methylation Array - Illumnia 450K
 
 DNA from the saliva samples was hybridized to the Illumina Infinium 450k Human Methylation Beadchip.
-## Data preprocessing and quality control
+# Data preprocessing and quality control
