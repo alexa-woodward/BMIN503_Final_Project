@@ -1,0 +1,163 @@
+---
+title: "BMIN503/EPID600 Project"
+author: "Alexa Woodward"
+output: 
+  html_document:
+    toc: false 
+    depth: 3 
+    theme: paper 
+    highlight: tango
+---
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 400)
+```  
+***
+Use this template to complete your project throughout the course. Your Final Project presentation in class will be based on the contents of this document. Replace the title/name and text below with your own, but leave the headers.
+
+### Overview
+The goal of this project is to build a machine learning model that can predict differential methlyation in preterm and term newborns based on a array of features. Publicly available methylation array data from the Gene Expression Omnibus (GEO) will be used for this purpose. Quality control will be performed using standard approaches prior to feature selection, and subsequently a number of machine learning models will be tested. We hypothesize that appropriate feature selection and methods will lead to a useful predictive model that could be utilized for a variety of exposure-epigenetic relationships.
+#include github link
+
+
+### Introduction 
+Epigenetics is a burgeoning field that is making a concerted effort to explain the mechanisms behind gene-environment interactions, the developmental origins of health and disease, cancer, and other phenomena [1-4]. Perinatal stressors have emerged as key exposures that impact later life outcomes, especially neurodevelopment, metabolic diseases, and obesity [5-7]. Conrad Waddington, a embryologist and developmental biologist, is creditied with coining the term "epigenetics" in 1942 [8]. The exact defition is contested, but generally refers to the elements that modify the expression of genes without changing the DNA sequence itself. As the genetic era began soon thereafter, new questions about differences in gene expression and phenotype development, the discovery of imprinted genes, and developments in sequencing and analysis methods paved the way for epigenetics research. More recently, epigenetic marks have been shown to be influenced by a number of perinatal exposures, including maternal behavior [3], famine [9], time spent in the neo-natal intensive care unit (NICU) [10], and preterm birth [11].
+
+Unlike classical genetics and despite the wealth of studies in animal models and continuing work in birth cohorts and other human samples, epigenetic research has not yet made use of machine learning. In genetics, machine learning has been applied extensively as a tool for prediction, dimensionality reduction, and classification. It has provided information on population and individual risk, and has increased the accuracy of various predictions [12-14]. Implementing these methods using epigenetic research is a novel approach will require interdisciplinary input from data scientists, basic science researchers in genetics and epigenetics, clincians, evironmental health scientists, epidemiologists and others. This study will be the first of its kind to use machine learning in this context of prenatal exposures and epigenetics in a human sample.
+
+
+### Methods
+Using methylation array data from GEO, this pipeline will perform QC, allow for visualization, and ultimately use machine learning methods to predict differential methylation at key sites in the genome.
+
+# Study and Control Population
+Study population data were downloaded from GEO, experiment GSE72120. The data is comprised of methylation arrays from saliva samples n from 36 preterm and 36 term infants who recieved care at the Royal Infirmary of Edinburgh between 2012 and 2014. Preterm birth was defined as < 32 weeks gestation, and term birth as > 37 weeks gestation. In each group, there are 18 males and 18 females. For the preterm infants, data on steriod administration (yes/no) were also included. fMRI variables will not be included in this analysis.
+
+# Methylation Array - Illumnia 450K
+DNA from the saliva samples was hybridized to the Illumina Infinium 450k Human Methylation Beadchip. This array includes two assays, the Infinium I and Infinium II, which use two and one bead(s) per probe, respectively. Methylated and unmethylated sites are measured by intensity values from "red" (A/T) and "green" (G/C) fluoresence. For each locus, the methylated proportion can be caluculated from these intensities, represented as M or Beta-values.   
+
+# Data preprocessing and quality control
+Data downloaded using the GEOquery package from Bioconductor. IDAT files were downloaded and gzipped to a local directory. The matrix file was modified to produce a target file with relevant phenotype information. Probe information was obtained and the array was annotated using the minfi package and dependencies. 
+The data was normalized using the preprocessFunnorm, recommended for large-scale baseline differences between samples [15]. Probes spanning SNPs were removed from the data. 
+
+Remade phenotype file
+
+### Results
+Describe your results and include relevant tables, plots, and code/comments used to obtain them. End with a brief conclusion of your findings related to the question you set out to address. You can include references if you'd like, but this is not required.---
+title: "Woodward_FinalProject"
+author: "Alexa Woodward"
+date: "November 5, 2018"
+output: html_document
+---
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r eval=FALSE}
+
+if (!requireNamespace("BiocManager"))
+    install.packages("BiocManager")
+BiocManager::install()
+BiocManager::install(c("GenomicFeatures", "AnnotationDbi"))
+BiocManager::install("IlluminaHumanMethylation450kprobe", version = "3.8")
+BiocManager::install("IlluminaHumanMethylation450kmanifest", version = "3.8")
+BiocManager::install(c("IlluminaHumanMethylation27k.db"))
+BiocManager::install("GEOquery", version = "3.8")
+BiocManager::install("openssl")
+BiocManager::install("minfi")
+BiocManager::install("minfiData")
+BiocManager::install("missMethyl")
+BiocManager::install("bumphunter", version = "3.8")
+BiocManager::install("shinyMethyl")
+BiocManager::install("methylationArrayAnalysis", version = "3.8")
+```
+
+#get GEO supplementary files, Read in Data
+```{r}
+library(GEOquery)
+getGEOSuppFiles("GSE72120")
+
+untar("GSE72120/GSE72120_RAW.tar", exdir = "C:/Users/alexaw/Documents/EPID 600/GSE72120/idat")
+head(list.files("C:/Users/alexaw/Documents/EPID 600/GSE72120/idat", pattern = "idat"))
+
+idatFiles <- list.files("C:/Users/alexaw/Documents/EPID 600/GSE72120/idat", pattern = "idat.gz$", full = TRUE)
+sapply(idatFiles, gunzip, overwrite = TRUE)
+
+#create target file
+baseDir_array <- file("C:/Users/alexaw/Documents/EPID 600/GSE72120/idat")
+
+targetarray <- read.metharray.sheet("C:/Users/alexaw/Documents/EPID 600/GSE72120/idat")
+
+library(minfi)
+library(illuminaio)
+rg_array <- read.metharray.exp("C:/Users/alexaw/Documents/EPID 600/GSE72120/idat", targets = targetarray)
+rg_array
+str(rg_array@NAMES)
+
+#probe info
+probe_info <- getManifest(rg_array)
+probe_info
+head(getProbeInfo(probe_info))
+
+#annotation
+annotation <- getAnnotation(rg_array)
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+annot450K <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+                           
+```
+## Data Visualization
+```{r}
+library(minfi)
+library(shinyMethyl)
+summary_array <- shinySummarize(rg_array)
+
+##phenotype data?
+pheno <- pData(rg_array)
+runShinyMethyl(summary_array) #delete this
+```
+
+#normalize using Genomic ratio set
+```{r}
+array_norm <- preprocessFunnorm(rg_array)
+head(array_norm)
+summary_norm <- shinySummarize(array_norm)
+head(summary_norm@phenotype)
+
+#Run ShinyMethyl for visualization and QC
+runShinyMethyl(summary_array, summary_norm)
+
+#sexes need to fix the sex column in the phenotype file?
+```
+
+#Remove SNPs?
+```{r}
+array_snps <- getSnpInfo(array_norm)
+array_qc <- dropLociWithSnps(array_norm, snps=c("SBE","CpG"), maf=0)
+array_snps
+```
+
+
+Differential Methylation
+```{r}
+
+```
+
+#methylumi good for small datasets
+
+###References
+1. Godfrey, Keith M., Karen A. Lillycrop, Graham C. Burdge, Peter D. Gluckman, and Mark A. Hanson. "Epigenetic mechanisms and the mismatch concept of the developmental origins of health and disease." Pediatric research 61, no. 5 Part 2 (2007): 5R.
+2. Yamada, L., and S. Chong. "Epigenetic studies in developmental origins of health and disease: pitfalls and key considerations for study design and interpretation." Journal of developmental origins of health and disease 8, no. 1 (2017): 30-43.
+3. Weaver, Ian CG, Nadia Cervoni, Frances A. Champagne, Ana C. D'Alessio, Shakti Sharma, Jonathan R. Seckl, Sergiy Dymov, Moshe Szyf, and Michael J. Meaney. "Epigenetic programming by maternal behavior." Nature neuroscience 7, no. 8 (2004): 847.
+4. Bind, Marie-Abele, Johanna Lepeule, Antonella Zanobetti, Antonio Gasparrini, Andrea A. Baccarelli, Brent A. Coull, Letizia Tarantini, Pantel S. Vokonas, Petros Koutrakis, and Joel Schwartz. "Air pollution and gene-specific methylation in the Normative Aging Study: association, effect modification, and mediation analysis." Epigenetics 9, no. 3 (2014): 448-458.
+5. Kundakovic, Marija, and Ivana Jaric. "The epigenetic link between prenatal adverse environments and neurodevelopmental disorders." Genes 8, no. 3 (2017): 104.
+6. O’donnell, K., T. G. O’connor, and V. Glover. "Prenatal stress and neurodevelopment of the child: focus on the HPA axis and role of the placenta." Developmental neuroscience 31, no. 4 (2009): 285-292.
+7. Welberg, Leonie AM, and Jonathan R. Seckl. "Prenatal stress, glucocorticoids and the programming of the brain." Journal of neuroendocrinology 13, no. 2 (2001): 113-128.
+8. Goldberg, Aaron D., C. David Allis, and Emily Bernstein. "Epigenetics: a landscape takes shape." Cell 128, no. 4 (2007): 635-638.
+9. Heijmans, Bastiaan T., Elmar W. Tobi, Aryeh D. Stein, Hein Putter, Gerard J. Blauw, Ezra S. Susser, P. Eline Slagboom, and L. H. Lumey. "Persistent epigenetic differences associated with prenatal exposure to famine in humans." Proceedings of the National Academy of Sciences 105, no. 44 (2008): 17046-17049.
+10. Montirosso, Rosario, and Livio Provenzi. "Implications of epigenetics and stress regulation on research and developmental care of preterm infants." Journal of Obstetric, Gynecologic & Neonatal Nursing 44, no. 2 (2015): 174-182.
+11. Burris, Heather H., Andrea A. Baccarelli, Robert O. Wright, and Rosalind J. Wright. "Epigenetics: linking social and environmental exposures to preterm birth." Pediatric research 79, no. 1-2 (2015): 136.
+12. Chen, Hsinchun. "Machine learning for information retrieval: neural networks, symbolic learning, and genetic algorithms." Journal of the American society for Information Science 46, no. 3 (1995): 194-216.
+13. Joubert, Bonnie R., Siri E. Håberg, Roy M. Nilsen, Xuting Wang, Stein E. Vollset, Susan K. Murphy, Zhiqing Huang et al. "450K epigenome-wide scan identifies differential DNA methylation in newborns related to maternal smoking during pregnancy." Environmental health perspectives 120, no. 10 (2012): 1425.
+14. Libbrecht, Maxwell W., and William Stafford Noble. "Machine learning applications in genetics and genomics." Nature Reviews Genetics 16, no. 6 (2015): 321.
+15. Jean-Philippe Fortin, Aurélie Labbe, Mathieu Lemire, Brent W Zanke, Thomas J Hudson, Elana J Fertig, Celia MT Greenwood, and Kasper D Hansen. 2014. “Functional normalization of 450k methylation array data improves replication in large cancer studies.” Genome Biology 15 (11): 503. doi:10.1186/s13059-014-0503-2.
