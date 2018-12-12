@@ -16,6 +16,7 @@ Use this template to complete your project throughout the course. Your Final Pro
 
 ### Overview
 The goal of this project is to build a machine learning model that can predict differential methlyation in preterm and term newborns based on a array of features. Publicly available methylation array data from the Gene Expression Omnibus (GEO) will be used for this purpose. Quality control will be performed using standard approaches prior to feature selection, and subsequently a number of machine learning models will be tested. We hypothesize that appropriate feature selection and methods will lead to a useful predictive model that could be utilized for a variety of exposure-epigenetic relationships.
+
 #include github link
 
 
@@ -36,6 +37,7 @@ DNA from the saliva samples was hybridized to the Illumina Infinium 450k Human M
 
 # Data preprocessing and quality control
 Data downloaded using the GEOquery package from Bioconductor. IDAT files were downloaded and gzipped to a local directory. The matrix file was modified to produce a target file with relevant phenotype information. Probe information was obtained and the array was annotated using the minfi package and dependencies. 
+minfi [16]
 The data was normalized using the preprocessFunnorm, recommended for large-scale baseline differences between samples [15]. Probes spanning SNPs were removed from the data. 
 
 Remade phenotype file
@@ -71,11 +73,15 @@ BiocManager::install("missMethyl")
 BiocManager::install("bumphunter", version = "3.8")
 BiocManager::install("shinyMethyl")
 BiocManager::install("methylationArrayAnalysis", version = "3.8")
+BiocManager::install("TxDb.Hsapiens.UCSC.hg19.knownGene")
+BiocManager::install("methyAnalysis")
+install.packages("corrplot")
 ```
 
 #get GEO supplementary files, Read in Data
 ```{r}
 library(GEOquery)
+library(minfi)
 getGEOSuppFiles("GSE72120")
 
 untar("GSE72120/GSE72120_RAW.tar", exdir = "C:/Users/alexaw/Documents/EPID 600/GSE72120/idat")
@@ -89,11 +95,12 @@ baseDir_array <- file("C:/Users/alexaw/Documents/EPID 600/GSE72120/idat")
 
 targetarray <- read.metharray.sheet("C:/Users/alexaw/Documents/EPID 600/GSE72120/idat")
 
-library(minfi)
 library(illuminaio)
 rg_array <- read.metharray.exp("C:/Users/alexaw/Documents/EPID 600/GSE72120/idat", targets = targetarray)
 rg_array
-str(rg_array@NAMES)
+#create MethylSet
+mset_array <- preprocessRaw(rg_array)
+
 
 #probe info
 probe_info <- getManifest(rg_array)
@@ -119,6 +126,11 @@ runShinyMethyl(summary_array) #delete this
 
 #normalize using Genomic ratio set
 ```{r}
+#getQC
+qc_info <- getQC(mset_array)
+plotQC(qc_info, badSampleCutoff = 10.5)
+#need to remove the bad samples 
+#normalize 
 array_norm <- preprocessFunnorm(rg_array)
 head(array_norm)
 summary_norm <- shinySummarize(array_norm)
@@ -134,16 +146,219 @@ runShinyMethyl(summary_array, summary_norm)
 ```{r}
 array_snps <- getSnpInfo(array_norm)
 array_qc <- dropLociWithSnps(array_norm, snps=c("SBE","CpG"), maf=0)
-array_snps
+
 ```
 
 
 Differential Methylation
 ```{r}
+#dmpHunter for differentially methylated positions
+beta_array <- getBeta(array_qc) #no warning here
+casecontrol <- pData(array_qc)$casecontrolstatus
+dmp_casecont <- dmpFinder(beta_array, pheno = casecontrol, type = "categorical")
+head(dmp_casecont)
+
+
+#bumphuner for differentially methylated regions 
+matrix <- model.matrix(~ casecontrol)
+dmrs <- bumphunter(array_qc, design = matrix, 
+             cutoff = 0.1, B=0, type="Beta") #can mess with these cutoff values
+
+#run permutations
+dmrs <- bumphunter(array_qc, design = matrix, 
+             cutoff = 0.10, B=100, type="Beta")
+dmrs2 <- as.data.frame(dmrs$table)
+#annotate dmrs
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+hg19_annotated <- annotateTranscripts(TxDb.Hsapiens.UCSC.hg19.knownGene, by = c("gene"))
+dmrs_anno <- annotateNearest(dmrs$table, hg19_annotated)
+head(dmrs_anno)
+
+annoTx <- annotateTranscripts(TxDb.Hsapiens.UCSC.hg19.knownGene)
+match <- matchGenes(dmrs$table, annoTx)
+
+
+#looking at diff meth cpgs 
+plotCpg(mset_array, cpg = "cg13985639", pheno = targetarray$casecontrolstatus, type = c("categorical"),
+  measure = c("beta"))
+
+#significant probes by chromosome
+library(ggplot2)
+ggplot(dmrs2, aes(x=chr, y=p.value)) + geom_point() + scale_y_reverse() + geom_hline(yintercept= 0.05, linetype="dashed", color = "red")
+
 
 ```
 
+
+
+```{r}
+imprinted <- read.csv("C:/Users/alexaw/Documents/EPID 600/imprinted_genes.csv", header = T)
+
+#are any imprinted genes among those differentially methylated?
+charmatch(match$name, imprinted$Gene)
+charmatch(match$name, imprinted$Alias)
+
+#PON2
+#IGF1R
+library(methyAnalysis)
+
+plotMethylationHeatmapByGene('8140', methyGenoSet=mset_array,
+phenoData=casecontrol, includeGeneBody=TRUE,
+genomicFeature='TxDb.Hsapiens.UCSC.hg19.knownGene')
+```
+
+#need to do feature selection and correlation matrix
 #methylumi good for small datasets
+```{r}
+
+#get M and beta values
+Mval_cpg <- as.data.frame(getM(array_qc))
+
+
+#make dataframe with potential features
+featurelist <-  as.data.frame(targetarray[2:9])
+featurelist[,2:4] <- NULL 
+featurelist$SampleID <- as.factor(featurelist$SampleID)
+featurelist$Sex <- as.factor(featurelist$Sex)
+featurelist$pma_birth <- as.factor(featurelist$pma_birth)
+featurelist$Steriods_birth <- as.factor(featurelist$Steriods_birth)
+
+#make matrix to use for corrplot  - this isn't really helpful
+
+library(corrplot)
+featurecor <- featurelist
+featurecor$SampleID <- as.numeric(gsub("GSM", "", featurecor$SampleID))
+featurecor$Sex <- as.numeric(as.factor(featurecor$Sex)) # 1 = F, 2 = M
+featurecor$casecontrolstatus <- as.numeric(as.factor(featurecor$casecontrolstatus)) #fullterm = 1, preterm = 2
+featurecor$Steriods_birth <- as.numeric(as.factor(featurecor$Steriods_birth))
+featurematrix <- cor(featurecor)
+featurematrix <- as.matrix(featurematrix)
+corrplot(featurematrix, type = "upper", 
+         tl.col = "black", tl.srt = 45)
+
+
+```
+
+
+
+```{r}
+# impute the missing PMA_birth data using MICE
+install.packages("mice")
+install.packages("VIM")
+library(mice)
+md.pattern(featurelist)
+
+library(VIM)
+aggr_plot <- aggr(featurelist, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(featurelist), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+
+temp <- mice(featurelist, m=5,maxit=50,meth='pmm',seed=500)
+summary(temp)
+temp$imp$pma_birth
+
+imputed <- complete(temp,1)
+imputed$casecontrolstatus <- as.factor(imputed$casecontrolstatus)
+
+
+#create new variable for levels of Pma @birth 
+imputed$pma_levels <- as.numeric(as.character(imputed$pma_birth))
+imputed$pma_levels[imputed$pma_levels > 23.00 & imputed$pma_levels < 26] <- 1
+imputed$pma_levels[imputed$pma_levels >= 26.00 & imputed$pma_levels < 29] <- 2
+imputed$pma_levels[imputed$pma_levels > 29.00 & imputed$pma_levels < 32.5] <- 3
+imputed$pma_levels[imputed$pma_levels > 38.00] <- 4
+imputed$pma_levels <- as.factor(imputed$pma_levels)
+#NOTE: The defintion for preterm for this study was defined as <32 weeks gestation, but two infants were slighly above 32 weeks (32, and 32.17 respectively) which was two few to use for prediction. Thus, level "3" was extended to 32.5 to allow for these subjects to stay in the dataset. 
+
+```
+
+
+#Filter cpgs from differentially methylated regions
+```{r}
+library(dplyr)
+cpgs <- as.data.frame(array_qc@rowRanges@ranges)
+cpgs
+
+
+cpgs_start <- inner_join(cpgs, dmrs2, by = "start")
+
+#filter M_beta for those cpgs
+library(tibble)
+Mval_cpg <- rownames_to_column(Mval_cpg, var = "names")
+cpg_features <- cpgs_start[,c("names", "value", "area", "p.value")]
+dmr_cpgs <- inner_join(Mval_cpg, cpg_features, by = "names")
+
+#transpose & fix column/row names
+dmr_cpgs <- t(dmr_cpgs)
+colnames(dmr_cpgs) <- unlist(dmr_cpgs[row.names(dmr_cpgs)=='names',])
+dmr_cpgs <- dmr_cpgs[!row.names(dmr_cpgs)=='names',]
+dmr_cpgs <- as.data.frame(dmr_cpgs)
+dmr_cpgs <- rownames_to_column(dmr_cpgs, var = "SampleID")
+dmr_cpgs$SampleID <- gsub("_.*", "",dmr_cpgs$SampleID)
+
+#add as features 
+features2 <- inner_join(dmr_cpgs, imputed, by = "SampleID")
+features2[,276:279] <- NULL
+features2 <- column_to_rownames(features2, var = "SampleID")
+features2[,1:274] <- sapply(features2[,1:274], as.character)
+features2[,1:274] <- sapply(features2[,1:274], as.numeric)
+
+#check for any missingness
+is.na(features2)
+
+```
+
+```{r}
+library(e1071)
+GSE72120.svm <- svm(pma_levels ~ ., data=features2, scale=TRUE, kernel="linear")
+GSE72120.svm
+
+svm.pred <- fitted(GSE72120.svm)
+table(features2$pma_levels, svm.pred)
+
+svm.pred <- predict(GSE72120.svm, features2)
+```
+
+
+
+```{r}
+#K-Fold Cross Validation
+N = nrow(features2)
+K = 5
+set.seed(1234)
+s = sample(1:K, size=N, replace=T)
+pred.outputs.svm <- vector(mode="numeric", length=N)
+obs.outputs <- vector(mode="numeric", length=N)
+offset <- 0
+for(i in 1:K){
+    train <- filter(features2, s != i)
+    test <- filter(features2, s == i)
+    obs.outputs[1:length(s[s==i]) + offset] <- test$pma_levels
+
+    #SVM train/test
+    svm.m <- svm(pma_levels~., data=train, scale=TRUE, kernel="linear")
+    svm.pred.curr <- predict(svm.m, test) 
+    pred.outputs.svm[1:length(s[s==i]) + offset] <- svm.pred.curr
+    
+    offset <- offset + length(s[s==i])
+}
+    
+```
+
+#Check reliability
+```{r}
+install.packages("caret")
+library(caret)
+obs.outputs2 <- as.factor(obs.outputs)
+pred.outputs.svm2 <- as.factor(pred.outputs.svm)
+confusionMatrix(pred.outputs.svm2, obs.outputs2)
+
+#visualization
+ggplot(data = dat, aes(x = x.2, y = x.1, color = y, shape = y)) + 
+  geom_point(size = 2) +
+  scale_color_manual(values=c("#000000","#FF0000","#00BA00")) +
+  theme(legend.position = "none")
+```
+
+
 
 ###References
 1. Godfrey, Keith M., Karen A. Lillycrop, Graham C. Burdge, Peter D. Gluckman, and Mark A. Hanson. "Epigenetic mechanisms and the mismatch concept of the developmental origins of health and disease." Pediatric research 61, no. 5 Part 2 (2007): 5R.
@@ -161,3 +376,4 @@ Differential Methylation
 13. Joubert, Bonnie R., Siri E. Håberg, Roy M. Nilsen, Xuting Wang, Stein E. Vollset, Susan K. Murphy, Zhiqing Huang et al. "450K epigenome-wide scan identifies differential DNA methylation in newborns related to maternal smoking during pregnancy." Environmental health perspectives 120, no. 10 (2012): 1425.
 14. Libbrecht, Maxwell W., and William Stafford Noble. "Machine learning applications in genetics and genomics." Nature Reviews Genetics 16, no. 6 (2015): 321.
 15. Jean-Philippe Fortin, Aurélie Labbe, Mathieu Lemire, Brent W Zanke, Thomas J Hudson, Elana J Fertig, Celia MT Greenwood, and Kasper D Hansen. 2014. “Functional normalization of 450k methylation array data improves replication in large cancer studies.” Genome Biology 15 (11): 503. doi:10.1186/s13059-014-0503-2.
+16. Aryee MJ, Jaffe AE, Corrada-Bravo H, Ladd-Acosta C, Feinberg AP, Hansen KD, Irizarry RA (2014). “Minfi: A flexible and comprehensive Bioconductor package for the analysis of Infinium DNA Methylation microarrays.” Bioinformatics, 30(10), 1363–1369. doi: 10.1093/bioinformatics/btu049. 
